@@ -329,6 +329,9 @@ def main():
     bm25 = build_bm25(chunks)
     agent = ResearcherAgent(bm25, chunks)
 
+    # Import auth middleware
+    from a2a_auth import create_authenticated_server
+
     print(f"\n{'='*60}")
     print(f"  A2A Researcher Agent")
     print(f"  Port       : {A2A_PORT}")
@@ -336,9 +339,11 @@ def main():
     print(f"  Chunks     : {len(chunks):,}")
     print(f"  LLM        : {LLM_MODEL}")
     print(f"  Top-K      : {TOP_K}")
+    print(f"  Auth       : API Key required (X-API-Key header)")
     print(f"{'='*60}\n")
 
-    run_server(agent, host="0.0.0.0", port=A2A_PORT)
+    app = create_authenticated_server(agent, agent_id="researcher", port=A2A_PORT)
+    app.run(host="0.0.0.0", port=A2A_PORT)
 
 
 if __name__ == "__main__":

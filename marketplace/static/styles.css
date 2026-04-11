@@ -2,7 +2,7 @@
    AI Agent Marketplace -- Premium Dark Design System
    ============================================================ */
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
 /* -- CSS Custom Properties ---------------------------------- */
 :root {
@@ -364,8 +364,38 @@ textarea.form-input {
     font-size: 13px;
 }
 
+.btn-xs {
+    padding: 4px 10px;
+    font-size: 11px;
+}
+
 .btn-full {
     width: 100%;
+}
+
+/* -- Protocol Badges ---------------------------------------- */
+.protocol-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+}
+
+.protocol-badge.a2a {
+    background: rgba(0, 212, 255, 0.12);
+    border: 1px solid rgba(0, 212, 255, 0.25);
+    color: var(--accent-cyan);
+}
+
+.protocol-badge.mcp {
+    background: rgba(255, 149, 0, 0.12);
+    border: 1px solid rgba(255, 149, 0, 0.25);
+    color: var(--accent-orange);
 }
 
 /* -- Agent Cards (Marketplace) ------------------------------ */
@@ -434,6 +464,9 @@ textarea.form-input {
     font-size: 17px;
     font-weight: 700;
     margin-bottom: 4px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
 }
 
 .agent-card-tagline {
@@ -510,11 +543,325 @@ textarea.form-input {
     align-items: center;
 }
 
+/* -- Skills Preview ----------------------------------------- */
+.skills-preview {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 16px;
+}
+
+.skill-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    background: rgba(168, 85, 247, 0.08);
+    border: 1px solid rgba(168, 85, 247, 0.15);
+    border-radius: 6px;
+    font-size: 11px;
+    color: var(--accent-purple);
+    font-weight: 500;
+}
+
+.skill-chip::before {
+    content: '⚡';
+    font-size: 10px;
+}
+
+
+/* ============================================================
+   MY AGENTS — Tabbed Card Interface 
+   ============================================================ */
+
+.my-agent-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    transition: all var(--transition-med);
+    position: relative;
+}
+
+.my-agent-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: var(--card-accent, var(--accent-cyan));
+    opacity: 0.7;
+}
+
+.my-agent-card:hover {
+    border-color: var(--border-accent);
+    box-shadow: var(--shadow-md);
+}
+
+.my-agent-header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 24px 28px 0;
+}
+
+.my-agent-header-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.my-agent-header-info h3 {
+    font-size: 18px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.my-agent-header-info .tagline {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin-top: 4px;
+}
+
+.my-agent-header-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* -- Tabs --------------------------------------------------- */
+.card-tabs {
+    display: flex;
+    gap: 0;
+    padding: 16px 28px 0;
+    border-bottom: 1px solid var(--border-subtle);
+}
+
+.card-tab {
+    padding: 10px 20px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-tertiary);
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    position: relative;
+    bottom: -1px;
+}
+
+.card-tab:hover {
+    color: var(--text-secondary);
+}
+
+.card-tab.active {
+    color: var(--accent-cyan);
+    border-bottom-color: var(--accent-cyan);
+}
+
+.card-tab-content {
+    padding: 24px 28px;
+    display: none;
+    animation: fadeTabIn 0.25s ease;
+}
+
+.card-tab-content.active {
+    display: block;
+}
+
+@keyframes fadeTabIn {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+/* -- Integration Panel -------------------------------------- */
+.integration-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.integration-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.integration-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-tertiary);
+    min-width: 95px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    flex-shrink: 0;
+}
+
+.integration-value {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+
+.integration-url {
+    flex: 1;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    padding: 8px 12px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-subtle);
+    border-radius: 6px;
+    color: var(--accent-cyan);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.integration-url.purple {
+    color: var(--accent-purple);
+}
+
+/* -- Code Snippet Blocks ------------------------------------ */
+.code-block-container {
+    margin-top: 8px;
+}
+
+.code-tabs {
+    display: flex;
+    gap: 0;
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+    border: 1px solid var(--border-subtle);
+    border-bottom: none;
+    overflow: hidden;
+}
+
+.code-tab {
+    padding: 8px 16px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-tertiary);
+    background: none;
+    border: none;
+    border-right: 1px solid var(--border-subtle);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.code-tab:last-child {
+    border-right: none;
+}
+
+.code-tab:hover {
+    color: var(--text-secondary);
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.code-tab.active {
+    color: var(--accent-cyan);
+    background: rgba(0, 212, 255, 0.06);
+}
+
+.code-block {
+    position: relative;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-subtle);
+    border-top: none;
+    border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+    overflow: hidden;
+}
+
+.code-block pre {
+    margin: 0;
+    padding: 16px 20px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12.5px;
+    line-height: 1.6;
+    color: var(--text-primary);
+    overflow-x: auto;
+    max-height: 350px;
+    overflow-y: auto;
+    white-space: pre;
+    tab-size: 4;
+}
+
+.code-block .copy-btn {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    padding: 4px 10px;
+    font-size: 11px;
+    font-weight: 600;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid var(--border-subtle);
+    border-radius: 6px;
+    color: var(--text-tertiary);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    font-family: inherit;
+}
+
+.code-block .copy-btn:hover {
+    background: rgba(0, 212, 255, 0.1);
+    border-color: rgba(0, 212, 255, 0.3);
+    color: var(--accent-cyan);
+}
+
+/* -- Agent Card JSON Viewer --------------------------------- */
+.json-viewer {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+}
+
+.json-viewer-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border-subtle);
+    background: rgba(0, 0, 0, 0.2);
+}
+
+.json-viewer-title {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-tertiary);
+}
+
+/* -- Inline Runner ------------------------------------------ */
+.inline-runner {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.inline-runner textarea {
+    min-height: 80px;
+}
+
+.inline-runner-output {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    padding: 16px;
+    min-height: 60px;
+}
+
 /* -- My Agents (Dashboard) ---------------------------------- */
 .my-agents-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-    gap: 20px;
+    grid-template-columns: 1fr;
+    gap: 24px;
 }
 
 /* -- Agent Workspace ---------------------------------------- */
@@ -563,7 +910,7 @@ textarea.form-input {
     background: var(--bg-secondary);
     border-radius: var(--radius-sm);
     padding: 16px;
-    font-family: 'SF Mono', 'Monaco', 'Cascadia Code', monospace;
+    font-family: 'JetBrains Mono', 'SF Mono', 'Monaco', monospace;
     font-size: 13px;
     line-height: 1.5;
     overflow-x: auto;
@@ -973,6 +1320,23 @@ textarea.form-input {
     .pipeline-sidebar {
         order: 2;
     }
+    .my-agent-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+    .card-tabs {
+        overflow-x: auto;
+    }
+    .integration-row {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+    .integration-label {
+        min-width: auto;
+    }
+    .integration-value {
+        width: 100%;
+    }
 }
 
 /* -- Section header with action ------------------------------ */
@@ -1009,4 +1373,154 @@ textarea.form-input {
 /* -- Hidden ------------------------------------------------- */
 .hidden {
     display: none !important;
+}
+
+/* -- Syntax highlighting colors ----------------------------- */
+.syn-key { color: #66d9ef; }
+.syn-str { color: #a6e22e; }
+.syn-num { color: #ae81ff; }
+.syn-bool { color: #f92672; }
+.syn-null { color: #f92672; }
+.syn-comment { color: #75715e; font-style: italic; }
+
+/* -- Pulse animation for online status ---------------------- */
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+.status-dot.online {
+    animation: pulse 2s ease-in-out infinite;
+}
+
+
+/* ============================================================
+   TOOL RESULTS STYLING
+   ============================================================ */
+
+/* -- Tool Cards ---------------------------------------------- */
+.tool-card {
+    transition: all var(--transition-med);
+}
+
+.tool-card:hover {
+    transform: translateY(-6px);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
+}
+
+/* -- Tool Result Sections ----------------------------------- */
+.tool-result-section {
+    margin-bottom: 16px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--border-subtle);
+}
+
+.tool-result-section:last-of-type {
+    border-bottom: none;
+}
+
+.tool-result-label {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-tertiary);
+    margin-bottom: 8px;
+}
+
+.tool-result-text {
+    font-size: 14px;
+    line-height: 1.7;
+    color: var(--text-primary);
+    padding: 14px 18px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+}
+
+.tool-result-list {
+    list-style: none;
+    padding: 0;
+}
+
+.tool-result-list li {
+    position: relative;
+    padding: 6px 0 6px 20px;
+    font-size: 13px;
+    color: var(--text-secondary);
+    line-height: 1.5;
+}
+
+.tool-result-list li::before {
+    content: '•';
+    position: absolute;
+    left: 4px;
+    color: var(--accent-cyan);
+    font-weight: 700;
+}
+
+/* -- Tool Stats Bar ----------------------------------------- */
+.tool-result-stats {
+    display: flex;
+    gap: 20px;
+    padding: 16px 20px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    margin-top: 16px;
+}
+
+.tool-stat {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+}
+
+.tool-stat-value {
+    font-size: 22px;
+    font-weight: 800;
+    color: var(--accent-cyan);
+    letter-spacing: -0.5px;
+}
+
+.tool-stat-label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-tertiary);
+}
+
+/* -- Entity Chips ------------------------------------------- */
+.entity-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.entity-chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 12px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+/* -- Select styling ----------------------------------------- */
+select.form-input {
+    appearance: none;
+    -webkit-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='6' viewBox='0 0 12 6'%3E%3Cpath d='M0 0l6 6 6-6z' fill='%239595b0'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 14px center;
+    padding-right: 36px;
+}
+
+select.form-input option {
+    background: var(--bg-secondary);
+    color: var(--text-primary);
 }

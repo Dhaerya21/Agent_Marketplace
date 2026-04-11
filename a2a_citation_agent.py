@@ -299,15 +299,20 @@ class CitationAgent(A2AServer):
 def main():
     citation_agent = CitationAgent()
 
+    # Import auth middleware
+    from a2a_auth import create_authenticated_server
+
     print(f"\n{'='*60}")
     print(f"  A2A Citation & Fact-Check Agent")
     print(f"  Port       : {A2A_PORT}")
     print(f"  Agent Card : http://localhost:{A2A_PORT}/.well-known/agent.json")
     print(f"  LLM        : {LLM_MODEL}")
+    print(f"  Auth       : API Key required (X-API-Key header)")
     print(f"  Input      : JSON (document + sources) or plain text")
     print(f"{'='*60}\n")
 
-    run_server(citation_agent, host="0.0.0.0", port=A2A_PORT)
+    app = create_authenticated_server(citation_agent, agent_id="citation", port=A2A_PORT)
+    app.run(host="0.0.0.0", port=A2A_PORT)
 
 
 if __name__ == "__main__":

@@ -6,11 +6,17 @@ SQLAlchemy models for users, agents, purchases, pipelines, and run history.
 
 import os
 import json
+import secrets
 from datetime import datetime, timezone
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
 
 db = SQLAlchemy()
+
+
+def _generate_api_key():
+    """Generate a unique API key: ak_<32 hex chars>"""
+    return "ak_" + secrets.token_hex(16)
 
 
 class User(db.Model):
@@ -73,6 +79,7 @@ class Agent(db.Model):
             "category": self.category,
             "tags": json.loads(self.tags) if self.tags else [],
             "color": self.color,
+            "agent_type": self.agent_type or "a2a",  # "a2a" or "mcp"
         }
 
 
@@ -82,6 +89,7 @@ class Purchase(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
     agent_id = db.Column(db.String(50), db.ForeignKey("agents.id"), nullable=False)
+    api_key = db.Column(db.String(64), unique=True, nullable=False, default=_generate_api_key)
     purchased_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
     __table_args__ = (
@@ -92,6 +100,7 @@ class Purchase(db.Model):
         return {
             "id": self.id,
             "agent_id": self.agent_id,
+            "api_key": self.api_key,
             "purchased_at": self.purchased_at.isoformat() if self.purchased_at else None,
         }
 

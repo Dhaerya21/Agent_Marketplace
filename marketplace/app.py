@@ -40,6 +40,12 @@ from flask_jwt_extended import (
 from .models import db, User, Agent, Purchase, Pipeline, PipelineRun, seed_agents
 from .agent_proxy import proxy
 from .pipeline_engine import execute_pipeline, validate_pipeline_access
+from .tools import get_tools_public, execute_tool, TOOLS
+
+# Import auth helpers for syncing API keys
+import sys, os as _os
+sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
+from a2a_auth import save_key, revoke_key, MARKETPLACE_MASTER_KEY
 
 # ==============================================================================
 # APP FACTORY
@@ -215,6 +221,12 @@ def purchase_agent():
     db.session.add(purchase)
     db.session.commit()
 
+    # Sync the API key to the shared keys file so A2A agents can validate it
+    try:
+        save_key(purchase.api_key, user.id, agent_id, user.username)
+    except Exception as e:
+        print(f"[warn] Could not sync API key to keys file: {e}")
+
     return jsonify({
         "message": f"Successfully purchased {agent.name}!",
         "purchase": purchase.to_dict(),
@@ -239,9 +251,45 @@ def get_my_agents():
             # --- Purchased users get the Agent Card URL + hosted endpoint ---
             agent_dict["a2a_url"] = agent.a2a_url
             agent_dict["agent_card_url"] = agent.a2a_url + "/.well-known/agent.json"
+            agent_dict["api_key"] = p.api_key
             agents.append(agent_dict)
 
     return jsonify({"agents": agents}), 200
+
+
+@app.route("/api/agents/<agent_id>/regenerate-key", methods=["POST"])
+@jwt_required()
+def regenerate_api_key(agent_id):
+    """Regenerate the API key for a purchased agent."""
+    user_id = int(get_jwt_identity())
+    user = User.query.get(user_id)
+    purchase = Purchase.query.filter_by(user_id=user_id, agent_id=agent_id).first()
+    if not purchase:
+        return jsonify({"error": "You haven't purchased this agent."}), 403
+
+    # Revoke old key
+    old_key = purchase.api_key
+    try:
+        revoke_key(old_key)
+    except Exception:
+        pass
+
+    # Generate new key
+    import secrets
+    new_key = "ak_" + secrets.token_hex(16)
+    purchase.api_key = new_key
+    db.session.commit()
+
+    # Sync new key
+    try:
+        save_key(new_key, user_id, agent_id, user.username if user else "")
+    except Exception as e:
+        print(f"[warn] Could not sync new API key: {e}")
+
+    return jsonify({
+        "api_key": new_key,
+        "message": "API key regenerated. Your old key is now invalid.",
+    }), 200
 
 
 @app.route("/api/agents/<agent_id>/card", methods=["GET"])
@@ -278,6 +326,41 @@ def get_agent_card(agent_id):
         "a2a_url": agent.a2a_url,
         "agent_card_url": agent.a2a_url + "/.well-known/agent.json",
     }), 200
+
+
+@app.route("/api/agents/<agent_id>/snippets", methods=["GET"])
+@jwt_required()
+def get_agent_snippets(agent_id):
+    """Generate integration code snippets for a purchased agent."""
+    user_id = int(get_jwt_identity())
+
+    # Only purchased agents expose snippets
+    purchase = Purchase.query.filter_by(user_id=user_id, agent_id=agent_id).first()
+    if not purchase:
+        return jsonify({"error": "You haven't purchased this agent."}), 403
+
+    agent = Agent.query.get(agent_id)
+    if not agent:
+        return jsonify({"error": "Agent not found."}), 404
+
+    snippets = proxy.generate_snippets(agent.a2a_url, agent.name, agent.agent_type, api_key=purchase.api_key)
+    return jsonify({
+        "snippets": snippets,
+        "agent_type": agent.agent_type or "a2a",
+        "a2a_url": agent.a2a_url,
+        "agent_card_url": agent.a2a_url + "/.well-known/agent.json",
+    }), 200
+
+
+@app.route("/api/agents/<agent_id>/skills", methods=["GET"])
+def get_agent_skills(agent_id):
+    """Get skills preview for any agent (public endpoint)."""
+    agent = Agent.query.get(agent_id)
+    if not agent:
+        return jsonify({"error": "Agent not found."}), 404
+
+    skills = proxy.get_skills_preview(agent.a2a_url)
+    return jsonify({"skills": skills}), 200
 
 
 # ==============================================================================
@@ -406,6 +489,45 @@ def get_pipeline_runs(pipeline_id):
     ).order_by(PipelineRun.started_at.desc()).limit(20).all()
 
     return jsonify({"runs": [r.to_dict() for r in runs]}), 200
+
+
+# ==============================================================================
+# HOSTED TOOLS ENDPOINTS
+# ==============================================================================
+@app.route("/api/tools", methods=["GET"])
+def list_tools():
+    """List all available tools — public, no auth required."""
+    return jsonify({"tools": get_tools_public()}), 200
+
+
+@app.route("/api/tools/<tool_id>/run", methods=["POST"])
+@jwt_required()
+def run_tool(tool_id):
+    """Execute a tool — requires authentication."""
+    user_id = int(get_jwt_identity())
+    user = User.query.get(user_id)
+    if not user:
+        return jsonify({"error": "User not found."}), 404
+
+    if tool_id not in TOOLS:
+        return jsonify({"error": "Tool not found."}), 404
+
+    data = request.get_json() or {}
+    text = (data.get("input") or "").strip()
+    options = data.get("options", {})
+
+    if not text:
+        return jsonify({"error": "Input text is required."}), 400
+
+    result, error = execute_tool(tool_id, user_id, text, options)
+
+    if error:
+        return jsonify({"error": error}), 400
+
+    return jsonify({
+        "result": result,
+        "tool": tool_id,
+    }), 200
 
 
 # ==============================================================================

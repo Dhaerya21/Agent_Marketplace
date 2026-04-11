@@ -276,15 +276,20 @@ class DocumentationAgent(A2AServer):
 def main():
     doc_agent = DocumentationAgent()
 
+    # Import auth middleware
+    from a2a_auth import create_authenticated_server
+
     print(f"\n{'='*60}")
     print(f"  A2A Documentation Writer Agent")
     print(f"  Port       : {A2A_PORT}")
     print(f"  Agent Card : http://localhost:{A2A_PORT}/.well-known/agent.json")
     print(f"  LLM        : {LLM_MODEL}")
+    print(f"  Auth       : API Key required (X-API-Key header)")
     print(f"  Input      : JSON research findings or plain text")
     print(f"{'='*60}\n")
 
-    run_server(doc_agent, host="0.0.0.0", port=A2A_PORT)
+    app = create_authenticated_server(doc_agent, agent_id="documentation", port=A2A_PORT)
+    app.run(host="0.0.0.0", port=A2A_PORT)
 
 
 if __name__ == "__main__":
