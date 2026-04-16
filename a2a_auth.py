@@ -167,6 +167,10 @@ def create_authenticated_server(agent, agent_id, port=5000):
     Create a Flask app from an A2A agent with API key authentication
     on the /a2a endpoint. The agent card remains public.
 
+    Fixes the python_a2a library's issue where JSON-RPC tasks/send requests
+    are incorrectly handled by the legacy Message route. We intercept /a2a,
+    validate the API key, and dispatch to handle_task directly.
+
     Args:
         agent: A2AServer instance
         agent_id: Agent ID string (e.g., "researcher")
@@ -175,34 +179,151 @@ def create_authenticated_server(agent, agent_id, port=5000):
     Returns:
         Flask app with auth middleware applied
     """
-    # Get the internal create_flask_app function from python_a2a
-    from python_a2a import run_server
-    create_flask_app = run_server.__globals__["create_flask_app"]
+    import json as _json
+    import uuid as _uuid
+    from flask import Flask, request as flask_request, jsonify as flask_jsonify
 
-    # Create the base Flask app
-    app = create_flask_app(agent)
+    # Create a fresh Flask app with just the agent card route
+    app = Flask(__name__)
 
-    # Store the original /a2a route handler
-    original_a2a_view = None
-    for rule in app.url_map.iter_rules():
-        if rule.rule == "/a2a":
-            original_a2a_view = app.view_functions.get(rule.endpoint)
-            break
+    # --- Public: Agent Card endpoint ---
+    @app.route("/.well-known/agent.json", methods=["GET"])
+    def agent_card():
+        """Serve the Agent Card (public, no auth needed)."""
+        card = agent.agent_card
+        card_dict = {
+            "name": card.name,
+            "description": card.description,
+            "version": card.version,
+            "url": f"http://localhost:{port}",
+        }
+        if hasattr(card, "skills") and card.skills:
+            card_dict["skills"] = []
+            for s in card.skills:
+                skill_dict = {"name": s.name}
+                if hasattr(s, "description") and s.description:
+                    skill_dict["description"] = s.description
+                if hasattr(s, "tags") and s.tags:
+                    skill_dict["tags"] = s.tags
+                card_dict["skills"].append(skill_dict)
+        if hasattr(card, "capabilities") and card.capabilities:
+            card_dict["capabilities"] = card.capabilities
+        return flask_jsonify(card_dict)
 
-    if original_a2a_view:
-        # Replace with an authenticated version
-        @require_api_key(agent_id=agent_id)
-        def authenticated_a2a():
-            return original_a2a_view()
+    # --- Protected: A2A task execution endpoint ---
+    @app.route("/a2a", methods=["POST"])
+    def handle_a2a():
+        """Handle A2A JSON-RPC requests with API key authentication."""
+        # 1. Validate API key
+        api_key = flask_request.headers.get("X-API-Key", "").strip()
+        if not api_key:
+            return flask_jsonify({
+                "jsonrpc": "2.0",
+                "error": {
+                    "code": -32001,
+                    "message": "Authentication required. Provide your API key in the X-API-Key header.",
+                },
+                "id": None,
+            }), 401
 
-        # Replace the view function
-        for rule in app.url_map.iter_rules():
-            if rule.rule == "/a2a":
-                app.view_functions[rule.endpoint] = authenticated_a2a
-                break
+        valid, info = is_valid_key(api_key, agent_id)
+        if not valid:
+            return flask_jsonify({
+                "jsonrpc": "2.0",
+                "error": {
+                    "code": -32002,
+                    "message": "Invalid API key. Purchase this agent from the marketplace to get a valid key.",
+                },
+                "id": None,
+            }), 403
+
+        # 2. Parse the incoming request
+        data = flask_request.get_json(force=True, silent=True) or {}
+        rpc_id = data.get("id")
+        method = data.get("method", "")
+        params = data.get("params", {})
+
+        # 3. Handle JSON-RPC tasks/send
+        if method == "tasks/send":
+            try:
+                from python_a2a import TaskStatus, TaskState
+                from python_a2a.models.task import Task
+
+                # Create task from params
+                task = Task.from_dict(params)
+
+                # Extract text from the message for agents that expect it
+                msg = params.get("message", {})
+                content = msg.get("content", {})
+                if isinstance(content, dict):
+                    text = content.get("text", "")
+                elif isinstance(content, str):
+                    text = content
+                else:
+                    text = str(content)
+
+                # Ensure task.message is in the format the agent expects
+                task.message = {
+                    "role": msg.get("role", "user"),
+                    "content": {"type": "text", "text": text},
+                }
+
+                # Run the agent's handle_task
+                result_task = agent.handle_task(task)
+
+                # Serialize the result
+                result_dict = result_task.to_dict()
+
+                return flask_jsonify({
+                    "jsonrpc": "2.0",
+                    "id": rpc_id,
+                    "result": result_dict,
+                })
+
+            except Exception as e:
+                import traceback
+                traceback.print_exc()
+                return flask_jsonify({
+                    "jsonrpc": "2.0",
+                    "id": rpc_id,
+                    "error": {
+                        "code": -32603,
+                        "message": f"Agent execution failed: {str(e)}",
+                    },
+                }), 500
+
+        # 4. Handle tasks/get
+        elif method == "tasks/get":
+            task_id = params.get("id")
+            task = agent.tasks.get(task_id) if hasattr(agent, "tasks") else None
+            if task:
+                return flask_jsonify({
+                    "jsonrpc": "2.0",
+                    "id": rpc_id,
+                    "result": task.to_dict(),
+                })
+            return flask_jsonify({
+                "jsonrpc": "2.0",
+                "id": rpc_id,
+                "error": {"code": -32000, "message": f"Task not found: {task_id}"},
+            }), 404
+
+        # 5. Unknown method
+        else:
+            return flask_jsonify({
+                "jsonrpc": "2.0",
+                "id": rpc_id,
+                "error": {"code": -32601, "message": f"Unknown method: {method}"},
+            }), 400
+
+    # --- Health check ---
+    @app.route("/a2a/health", methods=["GET"])
+    def health():
+        return flask_jsonify({"status": "ok"})
 
     print(f"  [auth] API key authentication enabled on /a2a")
     print(f"  [auth] Agent card (/.well-known/agent.json) remains public")
     print(f"  [auth] Keys file: {KEYS_FILE}")
 
     return app
+

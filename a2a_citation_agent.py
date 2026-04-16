@@ -250,16 +250,31 @@ class CitationAgent(A2AServer):
 
     def handle_task(self, task):
         """Handle incoming A2A task — extract document input, run fact-check."""
+        document_input = ""
         message_data = task.message or {}
-        content = message_data.get("content", {})
-        if isinstance(content, dict):
-            document_input = content.get("text", "")
-        elif isinstance(content, str):
-            document_input = content
-        else:
-            document_input = str(content)
 
-        if not document_input.strip():
+        if isinstance(message_data, str):
+            document_input = message_data
+        elif isinstance(message_data, dict):
+            content = message_data.get("content", "")
+            if isinstance(content, dict):
+                document_input = content.get("text", "")
+            elif isinstance(content, str):
+                document_input = content
+            elif isinstance(content, list):
+                for part in content:
+                    if isinstance(part, dict) and part.get("text"):
+                        document_input = part["text"]
+                        break
+            if not document_input and "parts" in message_data:
+                for part in message_data["parts"]:
+                    if isinstance(part, dict) and part.get("text"):
+                        document_input = part["text"]
+                        break
+            if not document_input and "text" in message_data:
+                document_input = message_data["text"]
+
+        if not document_input or not document_input.strip():
             task.status = TaskStatus(
                 state=TaskState.INPUT_REQUIRED,
                 message={
@@ -268,8 +283,7 @@ class CitationAgent(A2AServer):
                         "type": "text",
                         "text": (
                             "Please provide document content to fact-check. "
-                            "Ideally, send a JSON payload with 'document' and 'sources' "
-                            "fields (output from Documentation + Research agents)."
+                            "You can send text, JSON, or any content you want verified."
                         ),
                     },
                 },

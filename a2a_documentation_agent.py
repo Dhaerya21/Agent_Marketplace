@@ -226,17 +226,44 @@ class DocumentationAgent(A2AServer):
         return json.dumps(result, ensure_ascii=False)
 
     def handle_task(self, task):
-        """Handle incoming A2A task — extract research input, generate documentation."""
-        message_data = task.message or {}
-        content = message_data.get("content", {})
-        if isinstance(content, dict):
-            research_input = content.get("text", "")
-        elif isinstance(content, str):
-            research_input = content
-        else:
-            research_input = str(content)
+        """Handle incoming A2A task — extract input text, generate documentation."""
+        # Robustly extract text from any message format
+        research_input = ""
 
-        if not research_input.strip():
+        message_data = task.message or {}
+
+        if isinstance(message_data, str):
+            research_input = message_data
+        elif isinstance(message_data, dict):
+            content = message_data.get("content", "")
+
+            if isinstance(content, dict):
+                # {"content": {"type": "text", "text": "..."}}
+                research_input = content.get("text", "")
+            elif isinstance(content, str):
+                # {"content": "plain string"}
+                research_input = content
+            elif isinstance(content, list):
+                # {"content": [{"type": "text", "text": "..."}]}
+                for part in content:
+                    if isinstance(part, dict) and part.get("text"):
+                        research_input = part["text"]
+                        break
+
+            # Fallback: check for "parts" (Google A2A format)
+            if not research_input and "parts" in message_data:
+                parts = message_data["parts"]
+                if isinstance(parts, list):
+                    for part in parts:
+                        if isinstance(part, dict) and part.get("text"):
+                            research_input = part["text"]
+                            break
+
+            # Final fallback: check for "text" directly
+            if not research_input and "text" in message_data:
+                research_input = message_data["text"]
+
+        if not research_input or not research_input.strip():
             task.status = TaskStatus(
                 state=TaskState.INPUT_REQUIRED,
                 message={
@@ -244,9 +271,9 @@ class DocumentationAgent(A2AServer):
                     "content": {
                         "type": "text",
                         "text": (
-                            "Please provide research findings to document. "
-                            "You can send structured JSON from the Research & Analysis Agent "
-                            "or plain text research notes."
+                            "Please provide text to document. "
+                            "You can send structured JSON from the Research Agent, "
+                            "plain text notes, or any topic you want documented."
                         ),
                     },
                 },

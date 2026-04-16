@@ -274,16 +274,31 @@ class ResearcherAgent(A2AServer):
 
     def handle_task(self, task):
         """Handle incoming A2A task — extract topic, run research, return report."""
+        topic = ""
         message_data = task.message or {}
-        content = message_data.get("content", {})
-        if isinstance(content, dict):
-            topic = content.get("text", "")
-        elif isinstance(content, str):
-            topic = content
-        else:
-            topic = str(content)
 
-        if not topic.strip():
+        if isinstance(message_data, str):
+            topic = message_data
+        elif isinstance(message_data, dict):
+            content = message_data.get("content", "")
+            if isinstance(content, dict):
+                topic = content.get("text", "")
+            elif isinstance(content, str):
+                topic = content
+            elif isinstance(content, list):
+                for part in content:
+                    if isinstance(part, dict) and part.get("text"):
+                        topic = part["text"]
+                        break
+            if not topic and "parts" in message_data:
+                for part in message_data["parts"]:
+                    if isinstance(part, dict) and part.get("text"):
+                        topic = part["text"]
+                        break
+            if not topic and "text" in message_data:
+                topic = message_data["text"]
+
+        if not topic or not topic.strip():
             task.status = TaskStatus(
                 state=TaskState.INPUT_REQUIRED,
                 message={
