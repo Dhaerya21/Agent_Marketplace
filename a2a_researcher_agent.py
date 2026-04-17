@@ -136,6 +136,14 @@ def retrieve(bm25, chunks, question, k=TOP_K):
 # ==============================================================================
 def synthesize_research(topic, hits):
     """Call LLM to produce a structured research report from retrieved passages."""
+    import re
+    math_pattern = re.compile(r"^(?:what is|calculate|solve)?\s*[\$\d\s\+\-\*\/\(\)\.]+$", re.IGNORECASE)
+    if math_pattern.search(topic.strip()):
+        return (
+            '{"topic": "'+topic+'", "summary": "I cannot answer this question based on the provided database.", "findings": [], "confidence": 0}',
+            0, 0, 0, 0.01
+        )
+
     ctx_block = "\n\n---\n\n".join(
         f"[Source {i+1} | doc:{h['doc_index']} | {h['source_url']}]:\n{h['text']}"
         for i, h in enumerate(hits)
@@ -158,11 +166,12 @@ def synthesize_research(topic, hits):
         "}\n\n"
         "Rules:\n"
         "- Extract 3-7 distinct key findings from the passages.\n"
-        "- Each finding must cite which source passage it came from.\n"
-        "- Be factual. Do NOT invent information not in the passages.\n"
         "- Confidence = how well the sources cover the topic (0-100).\n\n"
         f"### Topic:\n{topic}\n\n"
         f"### Source Passages:\n{ctx_block}\n\n"
+        "### Final Verification:\n"
+        "Deeply analyze the Topic. If the Topic is asking to perform a calculation (e.g., math operations like addition or subtraction, such as '$10 - $5'), OR if it is a general knowledge question whose explicit answer is NOT found in the Source Passages above, you MUST ABORT and return exactly this document:\n"
+        '{"topic": "'+topic+'", "summary": "I cannot answer this question based on the provided database.", "findings": [], "confidence": 0}\n\n'
         "### Research Report (JSON):\n"
     )
 

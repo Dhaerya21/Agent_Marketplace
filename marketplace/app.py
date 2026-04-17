@@ -140,10 +140,9 @@ def serve_index():
 
 @app.route("/<path:path>")
 def serve_static(path):
-    # Block any attempt to access Python/config files
+    # Block any attempt to access Python/config files or hidden files
     blocked_extensions = {".py", ".pyc", ".db", ".env", ".json", ".csv", ".log", ".conf"}
-    ext = os.path.splitext(path)[1].lower()
-    if ext in blocked_extensions:
+    if path.startswith(".") or any(path.endswith(ext) for ext in blocked_extensions):
         return jsonify({"error": "Not found."}), 404
 
     if path.startswith("api/"):
@@ -620,10 +619,34 @@ def list_tools():
 
 
 @app.route("/api/tools/<tool_id>/run", methods=["POST"])
-@jwt_required()
+@jwt_required(optional=True)
 def run_tool(tool_id):
-    """Execute a tool — requires auth + credits."""
-    user_id = int(get_jwt_identity())
+    """Execute a tool — requires auth (JWT or API Key) + credits."""
+    jwt_user = get_jwt_identity()
+    user_id = None
+
+    if jwt_user:
+        user_id = int(jwt_user)
+    else:
+        import hmac
+        api_key = request.headers.get("X-API-Key")
+        if not api_key:
+            auth_header = request.headers.get("Authorization", "")
+            if auth_header.startswith("Bearer ak_"):
+                api_key = auth_header.replace("Bearer ", "")
+                
+        if not api_key or not api_key.startswith("ak_"):
+            return jsonify({"error": "Missing or invalid authentication. Provide JWT token or X-API-Key."}), 401
+            
+        key_records = ToolApiKey.query.filter_by(tool_id=tool_id).all()
+        for r in key_records:
+            if hmac.compare_digest(r.api_key, api_key):
+                user_id = r.user_id
+                break
+                
+        if not user_id:
+            return jsonify({"error": "Invalid API key for this tool."}), 401
+
     user = User.query.get(user_id)
     if not user:
         return jsonify({"error": "User not found."}), 404
@@ -755,13 +778,13 @@ def get_tool_snippets(tool_id):
             f'\n'
             f'# {tool["name"]} — API Integration\n'
             f'API_URL = "{base_url}/api/tools/{tool_id}/run"\n'
-            f'TOKEN = "YOUR_JWT_TOKEN"  # From /api/auth/login\n'
+            f'API_KEY = "{api_key}"\n'
             f'\n'
             f'resp = requests.post(API_URL, json={{\n'
             f'    "input": "Your text here",\n'
             f'    "options": {{}}\n'
             f'}}, headers={{\n'
-            f'    "Authorization": f"Bearer {{TOKEN}}",\n'
+            f'    "X-API-Key": API_KEY,\n'
             f'    "Content-Type": "application/json"\n'
             f'}})\n'
             f'print(json.dumps(resp.json(), indent=2))\n'
@@ -770,7 +793,7 @@ def get_tool_snippets(tool_id):
             f'# Run {tool["name"]}\n'
             f'curl -X POST {base_url}/api/tools/{tool_id}/run \\\n'
             f'  -H "Content-Type: application/json" \\\n'
-            f'  -H "Authorization: Bearer YOUR_JWT_TOKEN" \\\n'
+            f'  -H "X-API-Key: {api_key}" \\\n'
             f'  -d \'{{"input":"Your text here","options":{{}}}}\'\n'
         ),
         "javascript": (
@@ -779,7 +802,7 @@ def get_tool_snippets(tool_id):
             f'  method: "POST",\n'
             f'  headers: {{\n'
             f'    "Content-Type": "application/json",\n'
-            f'    "Authorization": `Bearer ${{token}}`\n'
+            f'    "X-API-Key": "{api_key}"\n'
             f'  }},\n'
             f'  body: JSON.stringify({{\n'
             f'    input: "Your text here",\n'

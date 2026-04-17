@@ -618,22 +618,33 @@ const App = {
         if (r.confidence) metadata.confidence = r.confidence;
         if (r.confidence_pct) metadata.confidence = r.confidence_pct + '%';
 
-        // Documentation output (direct fields)
-        if (r.title) answerParts.push(`<h3>${this.escapeHtml(r.title)}</h3>`);
-        if (r.abstract) answerParts.push(`<p class="answer-abstract">${this.escapeHtml(r.abstract)}</p>`);
-        if (r.sections && r.sections.length) {
-            r.sections.forEach(s => {
+        // Documentation output (nested document field, if parsed at top level without raw_output wrapper)
+        const doc = r.document || {};
+        if (r.title) doc.title = r.title;
+        if (r.abstract) doc.abstract = r.abstract;
+        if (r.sections) doc.sections = r.sections;
+        if (r.conclusion) doc.conclusion = r.conclusion;
+
+        if (doc.title) answerParts.push(`<h3>${this.escapeHtml(doc.title)}</h3>`);
+        if (doc.abstract) answerParts.push(`<p class="answer-abstract">${this.escapeHtml(doc.abstract)}</p>`);
+        if (doc.sections && doc.sections.length) {
+            doc.sections.forEach(s => {
                 answerParts.push(`<h4>${this.escapeHtml(s.heading || '')}</h4>`);
                 answerParts.push(`<p>${this.escapeHtml(s.content || '')}</p>`);
             });
         }
-        if (r.conclusion) answerParts.push(`<div class="answer-conclusion"><strong>Conclusion:</strong> ${this.escapeHtml(r.conclusion)}</div>`);
+        if (doc.conclusion) answerParts.push(`<div class="answer-conclusion"><strong>Conclusion:</strong> ${this.escapeHtml(doc.conclusion)}</div>`);
 
         // Verification output (direct fields)
         if (r.trust_score !== undefined) {
             answerParts.push(`<div class="trust-score">Trust Score: <strong>${r.trust_score}/100</strong></div>`);
         }
         if (r.verification) metadata.verification = r.verification;
+
+        if (r.metadata) {
+            Object.assign(metadata, r.metadata);
+            if (r.metadata.token_stats) metadata.token_stats = r.metadata.token_stats;
+        }
 
         const answer = answerParts.length > 0
             ? answerParts.join('')

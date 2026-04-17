@@ -18,5 +18,10 @@
     "user_id": 3,
     "agent_id": "researcher",
     "username": "dhaerya"
+  },
+  "ak_a3c524efeb6d3836d1c490845955e38a": {
+    "user_id": 1,
+    "agent_id": "researcher",
+    "username": "testuser"
   }
 }
