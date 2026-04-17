@@ -105,6 +105,29 @@ class Purchase(db.Model):
         }
 
 
+class ToolApiKey(db.Model):
+    """API key for external tool access. Created when user first uses a tool."""
+    __tablename__ = "tool_api_keys"
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    tool_id = db.Column(db.String(50), nullable=False)
+    api_key = db.Column(db.String(64), unique=True, nullable=False, default=_generate_api_key)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+
+    __table_args__ = (
+        db.UniqueConstraint("user_id", "tool_id", name="unique_user_tool"),
+    )
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "tool_id": self.tool_id,
+            "api_key": self.api_key,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
+
+
 class Pipeline(db.Model):
     __tablename__ = "pipelines"
 

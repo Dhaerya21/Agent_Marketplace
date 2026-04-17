@@ -524,17 +524,122 @@ const App = {
         if (res.ok && res.data.result) {
             const r = res.data.result;
             if (r.success) {
-                const elapsed = r.elapsed_sec ? `<div style="color:var(--text-tertiary);font-size:12px;margin-bottom:8px">Completed in ${r.elapsed_sec}s</div>` : '';
-                const clean = { ...r };
-                delete clean.success;
-                delete clean.elapsed_sec;
-                outputEl.innerHTML = `<div class="inline-runner-output">${elapsed}<div class="output-json" style="max-height:300px">${this.syntaxHighlight(JSON.stringify(clean, null, 2))}</div></div>`;
+                const { answer, metadata } = this.splitAgentResult(r);
+                const uid = `inline-${agentId}-${Date.now()}`;
+                outputEl.innerHTML = `
+                <div class="inline-runner-output">
+                    <div class="output-tabs">
+                        <button class="output-tab active" onclick="App.switchOutputTab('${uid}', 'answer')">📄 Answer</button>
+                        <button class="output-tab" onclick="App.switchOutputTab('${uid}', 'metadata')">📊 Metadata</button>
+                    </div>
+                    <div class="output-tab-panel active" id="${uid}-answer">
+                        <div class="answer-display">${answer}</div>
+                    </div>
+                    <div class="output-tab-panel" id="${uid}-metadata">
+                        <div class="metadata-panel">${this.syntaxHighlight(JSON.stringify(metadata, null, 2))}</div>
+                    </div>
+                </div>`;
             } else {
-                outputEl.innerHTML = `<div class="inline-runner-output"><div class="alert alert-error" style="margin:0">${r.error || 'Agent returned an error.'}</div></div>`;
+                outputEl.innerHTML = `<div class="inline-runner-output"><div class="alert alert-error" style="margin:0">${this.escapeHtml(r.error || 'Agent returned an error.')}</div></div>`;
             }
         } else {
-            outputEl.innerHTML = `<div class="inline-runner-output"><div class="alert alert-error" style="margin:0">${res.data.error || 'Request failed.'}</div></div>`;
+            outputEl.innerHTML = `<div class="inline-runner-output"><div class="alert alert-error" style="margin:0">${this.escapeHtml(res.data.error || 'Request failed.')}</div></div>`;
         }
+    },
+
+    switchOutputTab(uid, tab) {
+        const parent = document.getElementById(`${uid}-answer`)?.parentElement;
+        if (!parent) return;
+        parent.querySelectorAll('.output-tab').forEach(t => t.classList.remove('active'));
+        parent.querySelectorAll('.output-tab-panel').forEach(p => p.classList.remove('active'));
+        const idx = tab === 'answer' ? 0 : 1;
+        const tabs = parent.querySelectorAll('.output-tab');
+        const panels = parent.querySelectorAll('.output-tab-panel');
+        if (tabs[idx]) tabs[idx].classList.add('active');
+        if (panels[idx]) panels[idx].classList.add('active');
+    },
+
+    splitAgentResult(r) {
+        // Extract human-readable answer vs technical metadata
+        const metadata = {};
+        const answerParts = [];
+
+        // Metadata fields
+        if (r.elapsed_sec) metadata.processing_time = r.elapsed_sec + 's';
+        if (r.metrics) metadata.metrics = r.metrics;
+        if (r.sources_count) metadata.sources_count = r.sources_count;
+        if (r.sources) metadata.sources = r.sources;
+
+        // Answer fields — extract readable text
+        if (r.raw_output) {
+            // Try to parse structured output
+            try {
+                const parsed = typeof r.raw_output === 'string' ? JSON.parse(r.raw_output) : r.raw_output;
+                if (parsed.document) {
+                    // Documentation agent
+                    const doc = parsed.document;
+                    if (doc.title) answerParts.push(`<h3>${this.escapeHtml(doc.title)}</h3>`);
+                    if (doc.abstract) answerParts.push(`<p class="answer-abstract">${this.escapeHtml(doc.abstract)}</p>`);
+                    if (doc.sections) {
+                        doc.sections.forEach(s => {
+                            answerParts.push(`<h4>${this.escapeHtml(s.heading || '')}</h4>`);
+                            answerParts.push(`<p>${this.escapeHtml(s.content || '')}</p>`);
+                        });
+                    }
+                    if (doc.conclusion) answerParts.push(`<div class="answer-conclusion"><strong>Conclusion:</strong> ${this.escapeHtml(doc.conclusion)}</div>`);
+                    metadata.token_stats = parsed.metrics || {};
+                } else if (parsed.verification) {
+                    // Citation agent
+                    const v = parsed.verification;
+                    answerParts.push(`<div class="trust-score">Trust Score: <strong>${v.trust_score ?? '?'}/100</strong></div>`);
+                    if (v.verified_summary) answerParts.push(`<p>${this.escapeHtml(v.verified_summary)}</p>`);
+                    metadata.verification_details = v;
+                    metadata.token_stats = parsed.metrics || {};
+                } else {
+                    // Generic
+                    answerParts.push(`<p>${this.escapeHtml(typeof parsed === 'string' ? parsed : JSON.stringify(parsed, null, 2))}</p>`);
+                }
+            } catch {
+                answerParts.push(`<p>${this.escapeHtml(r.raw_output)}</p>`);
+            }
+        }
+
+        // Research agent output
+        if (r.summary) answerParts.push(`<p>${this.escapeHtml(r.summary)}</p>`);
+        if (r.topic) answerParts.push(`<div class="answer-topic"><strong>Topic:</strong> ${this.escapeHtml(r.topic)}</div>`);
+        if (r.findings && r.findings.length) {
+            answerParts.push('<h4>Key Findings</h4><ul class="answer-findings">');
+            r.findings.forEach(f => {
+                const fact = typeof f === 'string' ? f : (f.fact || f.key_fact || JSON.stringify(f));
+                answerParts.push(`<li>${this.escapeHtml(fact)}</li>`);
+            });
+            answerParts.push('</ul>');
+        }
+        if (r.confidence) metadata.confidence = r.confidence;
+        if (r.confidence_pct) metadata.confidence = r.confidence_pct + '%';
+
+        // Documentation output (direct fields)
+        if (r.title) answerParts.push(`<h3>${this.escapeHtml(r.title)}</h3>`);
+        if (r.abstract) answerParts.push(`<p class="answer-abstract">${this.escapeHtml(r.abstract)}</p>`);
+        if (r.sections && r.sections.length) {
+            r.sections.forEach(s => {
+                answerParts.push(`<h4>${this.escapeHtml(s.heading || '')}</h4>`);
+                answerParts.push(`<p>${this.escapeHtml(s.content || '')}</p>`);
+            });
+        }
+        if (r.conclusion) answerParts.push(`<div class="answer-conclusion"><strong>Conclusion:</strong> ${this.escapeHtml(r.conclusion)}</div>`);
+
+        // Verification output (direct fields)
+        if (r.trust_score !== undefined) {
+            answerParts.push(`<div class="trust-score">Trust Score: <strong>${r.trust_score}/100</strong></div>`);
+        }
+        if (r.verification) metadata.verification = r.verification;
+
+        const answer = answerParts.length > 0
+            ? answerParts.join('')
+            : `<pre class="output-json">${this.syntaxHighlight(JSON.stringify(r, null, 2))}</pre>`;
+
+        return { answer, metadata };
     },
 
     // -- Agent Card JSON Viewer -----------------------------------------------
@@ -794,12 +899,24 @@ const App = {
         if (res.ok && res.data.result) {
             const r = res.data.result;
             if (r.success) {
-                outputEl.innerHTML = `<div class="output-json">${this.formatOutput(r)}</div>`;
+                const { answer, metadata } = this.splitAgentResult(r);
+                const uid = `ws-${agentId}-${Date.now()}`;
+                outputEl.innerHTML = `
+                <div class="output-tabs">
+                    <button class="output-tab active" onclick="App.switchOutputTab('${uid}', 'answer')">📄 Answer</button>
+                    <button class="output-tab" onclick="App.switchOutputTab('${uid}', 'metadata')">📊 Metadata</button>
+                </div>
+                <div class="output-tab-panel active" id="${uid}-answer">
+                    <div class="answer-display">${answer}</div>
+                </div>
+                <div class="output-tab-panel" id="${uid}-metadata">
+                    <div class="metadata-panel">${this.syntaxHighlight(JSON.stringify(metadata, null, 2))}</div>
+                </div>`;
             } else {
-                outputEl.innerHTML = `<div class="alert alert-error">${r.error || 'Agent returned an error.'}</div>`;
+                outputEl.innerHTML = `<div class="alert alert-error">${this.escapeHtml(r.error || 'Agent returned an error.')}</div>`;
             }
         } else {
-            outputEl.innerHTML = `<div class="alert alert-error">${res.data.error || 'Request failed.'}</div>`;
+            outputEl.innerHTML = `<div class="alert alert-error">${this.escapeHtml(res.data.error || 'Request failed.')}</div>`;
         }
     },
 
@@ -1133,12 +1250,11 @@ const App = {
 
 
     // =========================================================================
-    // TOOL RUNNER PAGE
+    // TOOL RUNNER PAGE — with Run / Integrate / Code tabs
     // =========================================================================
     async renderToolRunner(toolId) {
         if (!toolId) return this.navigate('tools');
 
-        // Fetch tool info
         const res = await API.get('/tools');
         const tools = res.ok ? res.data.tools : [];
         const tool = tools.find(t => t.id === toolId);
@@ -1168,49 +1284,202 @@ const App = {
             }).join('');
         }
 
+        const activeTab = this.state.activeToolTabs?.[toolId] || 'run';
+
         this.render(this.navbar('tools') + `
         <div class="page">
-            <div class="workspace" style="max-width:900px">
+            <div class="workspace" style="max-width:900px" id="tool-card-${toolId}">
                 <div class="workspace-header">
                     <div class="agent-icon" style="background: linear-gradient(135deg, ${tool.color}, ${tool.color}88); font-size:24px">${tool.icon}</div>
                     <div style="flex:1">
                         <div style="font-size:18px; font-weight:700; display:flex; align-items:center; gap:8px">
                             ${tool.name}
                             <span class="protocol-badge" style="background:rgba(255,255,255,0.06);border-color:rgba(255,255,255,0.12);color:var(--text-secondary)">TOOL</span>
+                            <span style="font-size:12px;color:var(--accent-orange);font-weight:600">${tool.price || 2} credits/use</span>
                         </div>
                         <div style="font-size:13px; color:var(--text-secondary)">${tool.tagline}</div>
                     </div>
                     <button class="btn btn-secondary btn-sm" onclick="App.navigate('tools')">← Back</button>
                 </div>
 
-                <div class="workspace-input">
-                    ${optionsHtml}
-                    <div class="form-group" style="margin-bottom:12px">
-                        <label class="form-label">Input</label>
-                        <textarea class="form-input" id="tool-input" placeholder="${tool.input_placeholder || 'Enter your text here...'}" rows="6"></textarea>
+                <!-- Tool Tabs -->
+                <div class="card-tabs">
+                    <button class="card-tab ${activeTab === 'run' ? 'active' : ''}" onclick="App.switchToolTab('${toolId}', 'run')">▶ Run</button>
+                    <button class="card-tab ${activeTab === 'integrate' ? 'active' : ''}" onclick="App.switchToolTab('${toolId}', 'integrate')">🔗 Integrate</button>
+                    <button class="card-tab ${activeTab === 'code' ? 'active' : ''}" onclick="App.switchToolTab('${toolId}', 'code')">{ } Code</button>
+                </div>
+
+                <!-- Tab: Run -->
+                <div class="card-tab-content ${activeTab === 'run' ? 'active' : ''}" id="tool-tab-run-${toolId}">
+                    <div class="workspace-input">
+                        ${optionsHtml}
+                        <div class="form-group" style="margin-bottom:12px">
+                            <label class="form-label">Input</label>
+                            <textarea class="form-input" id="tool-input" placeholder="${tool.input_placeholder || 'Enter your text here...'}" rows="6"></textarea>
+                        </div>
+                        <div style="display:flex;align-items:center;gap:12px">
+                            <button class="btn btn-primary" id="tool-run-btn" onclick="App.executeTool('${tool.id}')">Run ${tool.name}</button>
+                            <span style="font-size:12px;color:var(--text-tertiary)" id="tool-char-count">0 characters</span>
+                        </div>
                     </div>
-                    <div style="display:flex;align-items:center;gap:12px">
-                        <button class="btn btn-primary" id="tool-run-btn" onclick="App.executeTool('${tool.id}')">Run ${tool.name}</button>
-                        <span style="font-size:12px;color:var(--text-tertiary)" id="tool-char-count">0 characters</span>
+                    <div class="workspace-output hidden" id="tool-output-area">
+                        <div id="tool-output" class="output-content"></div>
                     </div>
                 </div>
 
-                <div class="workspace-output hidden" id="tool-output-area">
-                    <h3 style="font-size:14px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-secondary); margin-bottom:16px">Result</h3>
-                    <div id="tool-output" class="output-content"></div>
+                <!-- Tab: Integrate -->
+                <div class="card-tab-content ${activeTab === 'integrate' ? 'active' : ''}" id="tool-tab-integrate-${toolId}">
+                    <div class="integration-panel">
+                        <div class="integration-row">
+                            <span class="integration-label">API Endpoint</span>
+                            <div class="integration-value">
+                                <code class="integration-url">${window.location.origin}/api/tools/${toolId}/run</code>
+                                <button class="btn btn-secondary btn-xs" onclick="App.copyText('${window.location.origin}/api/tools/${toolId}/run')">Copy</button>
+                            </div>
+                        </div>
+                        <div class="integration-row">
+                            <span class="integration-label">API Key</span>
+                            <div class="integration-value">
+                                <code class="integration-url" style="color:var(--accent-green);font-size:11px" id="tool-apikey-${toolId}">Loading...</code>
+                                <button class="btn btn-secondary btn-xs" onclick="App.loadAndCopyToolKey('${toolId}')">Show & Copy</button>
+                                <button class="btn btn-danger btn-xs" onclick="App.regenerateToolKey('${toolId}')">Regenerate</button>
+                            </div>
+                        </div>
+                        <div class="integration-row">
+                            <span class="integration-label">Auth Method</span>
+                            <div class="integration-value">
+                                <code class="integration-url" style="font-size:11px">Authorization: Bearer &lt;JWT_TOKEN&gt;</code>
+                            </div>
+                        </div>
+                        <div class="integration-row">
+                            <span class="integration-label">Rate Limit</span>
+                            <div class="integration-value">
+                                <span style="font-size:13px;color:var(--text-secondary)">15 requests/minute per user</span>
+                            </div>
+                        </div>
+                        <div class="integration-row">
+                            <span class="integration-label">Cost</span>
+                            <div class="integration-value">
+                                <span style="font-size:13px;color:var(--accent-orange);font-weight:600">${tool.price || 2} credits per use</span>
+                            </div>
+                        </div>
+                        <div style="margin-top:8px;padding:10px 14px;background:rgba(255,149,0,0.06);border:1px solid rgba(255,149,0,0.15);border-radius:var(--radius-sm)">
+                            <div style="font-size:11px;color:var(--accent-orange);font-weight:600">🔒 SECURITY NOTE</div>
+                            <div style="font-size:12px;color:var(--text-secondary);margin-top:4px">Use your JWT token from <code style="color:var(--accent-cyan);font-size:11px">/api/auth/login</code> in the Authorization header. Never share credentials publicly.</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tab: Code -->
+                <div class="card-tab-content ${activeTab === 'code' ? 'active' : ''}" id="tool-tab-code-${toolId}">
+                    <div id="tool-snippets-${toolId}">
+                        <div class="loading" style="padding:20px"><div class="spinner" style="width:20px;height:20px;border-width:2px"></div> Loading snippets...</div>
+                    </div>
                 </div>
             </div>
         </div>`);
 
         // Character count
         const inputEl = document.getElementById('tool-input');
-        const countEl = document.getElementById('tool-char-count');
-        inputEl.focus();
-        inputEl.addEventListener('input', () => {
-            const len = inputEl.value.length;
-            countEl.textContent = `${len.toLocaleString()} characters`;
-            countEl.style.color = len > 8000 ? 'var(--accent-red)' : 'var(--text-tertiary)';
+        if (inputEl) {
+            const countEl = document.getElementById('tool-char-count');
+            inputEl.focus();
+            inputEl.addEventListener('input', () => {
+                const len = inputEl.value.length;
+                countEl.textContent = `${len.toLocaleString()} characters`;
+                countEl.style.color = len > 8000 ? 'var(--accent-red)' : 'var(--text-tertiary)';
+            });
+        }
+
+        // Load tool API key
+        this.loadToolApiKey(toolId);
+        if (activeTab === 'code') this.loadToolSnippets(toolId);
+    },
+
+    switchToolTab(toolId, tab) {
+        if (!this.state.activeToolTabs) this.state.activeToolTabs = {};
+        this.state.activeToolTabs[toolId] = tab;
+        const card = document.getElementById(`tool-card-${toolId}`);
+        if (!card) return;
+        card.querySelectorAll('.card-tab').forEach(t => t.classList.remove('active'));
+        card.querySelectorAll('.card-tab-content').forEach(t => t.classList.remove('active'));
+        const tabs = card.querySelectorAll('.card-tab');
+        const contents = card.querySelectorAll('.card-tab-content');
+        const idx = { run: 0, integrate: 1, code: 2 }[tab] ?? 0;
+        if (tabs[idx]) tabs[idx].classList.add('active');
+        if (contents[idx]) contents[idx].classList.add('active');
+        if (tab === 'code' && !this.state.toolSnippetsCache?.[toolId]) this.loadToolSnippets(toolId);
+    },
+
+    async loadToolApiKey(toolId) {
+        const el = document.getElementById(`tool-apikey-${toolId}`);
+        if (!el) return;
+        const res = await API.get(`/tools/${toolId}/api-key`);
+        if (res.ok) {
+            const key = res.data.api_key;
+            el.textContent = key.slice(0, 6) + '••••••••••••••' + key.slice(-4);
+            el.dataset.key = key;
+        } else {
+            el.textContent = 'Login to get API key';
+        }
+    },
+
+    async loadAndCopyToolKey(toolId) {
+        const el = document.getElementById(`tool-apikey-${toolId}`);
+        if (!el || !el.dataset.key) {
+            const res = await API.get(`/tools/${toolId}/api-key`);
+            if (res.ok) { el.textContent = res.data.api_key; el.dataset.key = res.data.api_key; this.copyText(res.data.api_key); }
+            return;
+        }
+        el.textContent = el.dataset.key;
+        this.copyText(el.dataset.key);
+        setTimeout(() => { el.textContent = el.dataset.key.slice(0, 6) + '••••••••••••••' + el.dataset.key.slice(-4); }, 3000);
+    },
+
+    async regenerateToolKey(toolId) {
+        if (!confirm('Regenerate your tool API key? Old key will stop working.')) return;
+        const res = await API.post(`/tools/${toolId}/regenerate-key`);
+        if (res.ok) {
+            const el = document.getElementById(`tool-apikey-${toolId}`);
+            if (el) { el.textContent = res.data.api_key; el.dataset.key = res.data.api_key; }
+            showToast('Tool API key regenerated!', 'success');
+            if (this.state.toolSnippetsCache) delete this.state.toolSnippetsCache[toolId];
+        } else { showToast(res.data.error || 'Failed to regenerate key', 'error'); }
+    },
+
+    async loadToolSnippets(toolId) {
+        if (!this.state.toolSnippetsCache) this.state.toolSnippetsCache = {};
+        const container = document.getElementById(`tool-snippets-${toolId}`);
+        if (!container) return;
+        const res = await API.get(`/tools/${toolId}/snippets`);
+        if (!res.ok) { container.innerHTML = '<div class="alert alert-error">Could not load snippets. Please log in first.</div>'; return; }
+        const { snippets } = res.data;
+        this.state.toolSnippetsCache[toolId] = snippets;
+        container.innerHTML = `
+        <div class="snippets-panel">
+            <div class="snippet-tabs">
+                <button class="snippet-tab active" onclick="App.switchToolSnippetTab('${toolId}', 'python')">Python</button>
+                <button class="snippet-tab" onclick="App.switchToolSnippetTab('${toolId}', 'curl')">curl</button>
+                <button class="snippet-tab" onclick="App.switchToolSnippetTab('${toolId}', 'javascript')">JavaScript</button>
+            </div>
+            <div class="snippet-content" id="tool-snippet-python-${toolId}"><pre class="snippet-code">${this.escapeHtml(snippets.python || '')}</pre><button class="btn btn-secondary btn-sm" style="margin-top:8px" onclick="App.copyText(App.state.toolSnippetsCache['${toolId}'].python)">Copy</button></div>
+            <div class="snippet-content hidden" id="tool-snippet-curl-${toolId}"><pre class="snippet-code">${this.escapeHtml(snippets.curl || '')}</pre><button class="btn btn-secondary btn-sm" style="margin-top:8px" onclick="App.copyText(App.state.toolSnippetsCache['${toolId}'].curl)">Copy</button></div>
+            <div class="snippet-content hidden" id="tool-snippet-javascript-${toolId}"><pre class="snippet-code">${this.escapeHtml(snippets.javascript || '')}</pre><button class="btn btn-secondary btn-sm" style="margin-top:8px" onclick="App.copyText(App.state.toolSnippetsCache['${toolId}'].javascript)">Copy</button></div>
+        </div>`;
+    },
+
+    switchToolSnippetTab(toolId, lang) {
+        ['python', 'curl', 'javascript'].forEach(l => {
+            const el = document.getElementById(`tool-snippet-${l}-${toolId}`);
+            if (el) el.classList.toggle('hidden', l !== lang);
         });
+        const parent = document.getElementById(`tool-snippets-${toolId}`);
+        if (parent) {
+            parent.querySelectorAll('.snippet-tab').forEach(t => t.classList.remove('active'));
+            const tabs = parent.querySelectorAll('.snippet-tab');
+            const idx = { python: 0, curl: 1, javascript: 2 }[lang] ?? 0;
+            if (tabs[idx]) tabs[idx].classList.add('active');
+        }
     },
 
     async executeTool(toolId) {
@@ -1227,121 +1496,69 @@ const App = {
         outputArea.classList.remove('hidden');
         outputEl.innerHTML = '<div class="loading"><div class="spinner"></div> AI is processing your text...</div>';
 
-        // Gather options
         const options = {};
         document.querySelectorAll('[id^="tool-opt-"]').forEach(el => {
-            const key = el.id.replace('tool-opt-', '');
-            options[key] = el.value;
+            options[el.id.replace('tool-opt-', '')] = el.value;
         });
 
         const res = await API.post(`/tools/${toolId}/run`, { input, options });
 
         btn.disabled = false;
-        btn.textContent = `Run Again`;
+        btn.textContent = 'Run Again';
 
         if (res.ok && res.data.result) {
             const r = res.data.result;
-            outputEl.innerHTML = this.renderToolResult(toolId, r);
+            const { answer, metadata } = this.splitToolResult(toolId, r);
+            const creditsInfo = res.data.credits_remaining !== undefined
+                ? `<div style="font-size:12px;color:var(--text-tertiary);margin-bottom:8px">Credits remaining: <strong style="color:var(--accent-orange)">${res.data.credits_remaining}</strong></div>` : '';
+            const uid = `tool-${toolId}-${Date.now()}`;
+            outputEl.innerHTML = `
+            ${creditsInfo}
+            <div class="output-tabs">
+                <button class="output-tab active" onclick="App.switchOutputTab('${uid}', 'answer')">📄 Answer</button>
+                <button class="output-tab" onclick="App.switchOutputTab('${uid}', 'metadata')">📊 Metadata</button>
+            </div>
+            <div class="output-tab-panel active" id="${uid}-answer"><div class="answer-display">${answer}</div></div>
+            <div class="output-tab-panel" id="${uid}-metadata"><div class="metadata-panel">${this.syntaxHighlight(JSON.stringify(metadata, null, 2))}</div></div>`;
         } else {
-            outputEl.innerHTML = `<div class="alert alert-error">${res.data.error || 'Tool execution failed.'}</div>`;
+            outputEl.innerHTML = `<div class="alert alert-error">${this.escapeHtml(res.data.error || 'Tool execution failed.')}</div>`;
         }
     },
 
-    renderToolResult(toolId, result) {
-        const time = result.processing_time ? `<div style="font-size:12px;color:var(--text-tertiary);margin-bottom:12px">Processed in ${result.processing_time}s</div>` : '';
+    splitToolResult(toolId, result) {
+        const metadata = {};
+        let answer = '';
+        if (result.processing_time) metadata.processing_time = result.processing_time + 's';
+        if (result.stats) metadata.stats = result.stats;
 
         if (toolId === 'summarizer') {
             const keyPoints = (result.key_points || []).map(p => `<li>${this.escapeHtml(p)}</li>`).join('');
-            const stats = result.stats || {};
-            return `
-            ${time}
-            <div class="tool-result-section">
-                <div class="tool-result-label">Summary</div>
-                <div class="tool-result-text">${this.escapeHtml(result.summary || '')}</div>
-            </div>
-            ${keyPoints ? `
-            <div class="tool-result-section">
-                <div class="tool-result-label">Key Points</div>
-                <ul class="tool-result-list">${keyPoints}</ul>
-            </div>` : ''}
-            <div class="tool-result-stats">
-                <div class="tool-stat"><span class="tool-stat-value">${stats.original_words || '?'}</span><span class="tool-stat-label">Original Words</span></div>
-                <div class="tool-stat"><span class="tool-stat-value">${stats.summary_words || '?'}</span><span class="tool-stat-label">Summary Words</span></div>
-                <div class="tool-stat"><span class="tool-stat-value">${stats.compression_ratio || '?'}%</span><span class="tool-stat-label">Compression</span></div>
-            </div>`;
-        }
-
-        if (toolId === 'extractor') {
+            answer = `<div class="tool-result-section"><div class="tool-result-label">Summary</div><div class="tool-result-text">${this.escapeHtml(result.summary || '')}</div></div>
+                ${keyPoints ? `<div class="tool-result-section"><div class="tool-result-label">Key Points</div><ul class="tool-result-list">${keyPoints}</ul></div>` : ''}`;
+        } else if (toolId === 'extractor') {
             const entities = result.entities || {};
-            const renderList = (items, color) => items.length
-                ? items.map(i => `<span class="entity-chip" style="border-color:${color}44;color:${color}">${this.escapeHtml(i)}</span>`).join('')
-                : '<span style="color:var(--text-tertiary);font-size:12px">None found</span>';
-
-            const keywords = (result.keywords || []).map(k => `<span class="tag">${this.escapeHtml(k)}</span>`).join('');
-            const topics = (result.topics || []).map(t => `<span class="tag" style="border-color:var(--accent-purple);color:var(--accent-purple)">${this.escapeHtml(t)}</span>`).join('');
-            const stats = result.stats || {};
-
-            return `
-            ${time}
-            <div class="tool-result-section">
-                <div class="tool-result-label">Category: <span style="color:var(--accent-cyan)">${this.escapeHtml(result.category || 'Unknown')}</span> · Language: <span style="color:var(--accent-green)">${this.escapeHtml(result.language || 'Unknown')}</span></div>
-            </div>
-            <div class="tool-result-section">
-                <div class="tool-result-label">👤 People</div>
-                <div class="entity-chips">${renderList(entities.people || [], '#00d4ff')}</div>
-            </div>
-            <div class="tool-result-section">
-                <div class="tool-result-label">🏢 Organizations</div>
-                <div class="entity-chips">${renderList(entities.organizations || [], '#a855f7')}</div>
-            </div>
-            <div class="tool-result-section">
-                <div class="tool-result-label">📍 Locations</div>
-                <div class="entity-chips">${renderList(entities.locations || [], '#00ff88')}</div>
-            </div>
-            <div class="tool-result-section">
-                <div class="tool-result-label">📅 Dates</div>
-                <div class="entity-chips">${renderList(entities.dates || [], '#ff9500')}</div>
-            </div>
-            <div class="tool-result-section">
-                <div class="tool-result-label">🔑 Keywords</div>
-                <div style="display:flex;flex-wrap:wrap;gap:6px">${keywords || '<span style="color:var(--text-tertiary);font-size:12px">None</span>'}</div>
-            </div>
-            <div class="tool-result-section">
-                <div class="tool-result-label">📂 Topics</div>
-                <div style="display:flex;flex-wrap:wrap;gap:6px">${topics || '<span style="color:var(--text-tertiary);font-size:12px">None</span>'}</div>
-            </div>
-            <div class="tool-result-stats">
-                <div class="tool-stat"><span class="tool-stat-value">${stats.total_entities || 0}</span><span class="tool-stat-label">Entities</span></div>
-                <div class="tool-stat"><span class="tool-stat-value">${stats.total_keywords || 0}</span><span class="tool-stat-label">Keywords</span></div>
-            </div>`;
-        }
-
-        if (toolId === 'rewriter') {
+            const rl = (items, color) => items.length ? items.map(i => `<span class="entity-chip" style="border-color:${color}44;color:${color}">${this.escapeHtml(i)}</span>`).join('') : '<span style="color:var(--text-tertiary);font-size:12px">None</span>';
+            const kw = (result.keywords || []).map(k => `<span class="tag">${this.escapeHtml(k)}</span>`).join('');
+            const tp = (result.topics || []).map(t => `<span class="tag" style="border-color:var(--accent-purple);color:var(--accent-purple)">${this.escapeHtml(t)}</span>`).join('');
+            answer = `
+                <div class="tool-result-section"><div class="tool-result-label">Category: <span style="color:var(--accent-cyan)">${this.escapeHtml(result.category || '?')}</span></div></div>
+                <div class="tool-result-section"><div class="tool-result-label">👤 People</div><div class="entity-chips">${rl(entities.people||[],'#00d4ff')}</div></div>
+                <div class="tool-result-section"><div class="tool-result-label">🏢 Organizations</div><div class="entity-chips">${rl(entities.organizations||[],'#a855f7')}</div></div>
+                <div class="tool-result-section"><div class="tool-result-label">📍 Locations</div><div class="entity-chips">${rl(entities.locations||[],'#00ff88')}</div></div>
+                <div class="tool-result-section"><div class="tool-result-label">🔑 Keywords</div><div style="display:flex;flex-wrap:wrap;gap:6px">${kw||'None'}</div></div>
+                <div class="tool-result-section"><div class="tool-result-label">📂 Topics</div><div style="display:flex;flex-wrap:wrap;gap:6px">${tp||'None'}</div></div>`;
+        } else if (toolId === 'rewriter') {
             const changes = (result.changes_made || []).map(c => `<li>${this.escapeHtml(c)}</li>`).join('');
-            const stats = result.stats || {};
-            return `
-            ${time}
-            <div class="tool-result-section">
-                <div class="tool-result-label">Rewritten Text <span class="protocol-badge" style="background:rgba(0,255,136,0.1);border-color:rgba(0,255,136,0.2);color:var(--accent-green);font-size:10px;margin-left:8px">${this.escapeHtml(result.tone || 'N/A')} tone</span></div>
-                <div class="tool-result-text" style="white-space:pre-wrap">${this.escapeHtml(result.rewritten_text || '')}</div>
-                <button class="btn btn-secondary btn-sm" style="margin-top:12px" onclick="App.copyText(document.querySelector('.tool-result-text').textContent)">Copy Rewritten Text</button>
-            </div>
-            ${changes ? `
-            <div class="tool-result-section">
-                <div class="tool-result-label">Changes Made</div>
-                <ul class="tool-result-list">${changes}</ul>
-            </div>` : ''}
-            <div class="tool-result-stats">
-                <div class="tool-stat"><span class="tool-stat-value">${stats.original_words || '?'}</span><span class="tool-stat-label">Original Words</span></div>
-                <div class="tool-stat"><span class="tool-stat-value">${stats.rewritten_words || '?'}</span><span class="tool-stat-label">Rewritten Words</span></div>
-            </div>`;
+            answer = `<div class="tool-result-section"><div class="tool-result-label">Rewritten Text <span class="protocol-badge" style="background:rgba(0,255,136,0.1);border-color:rgba(0,255,136,0.2);color:var(--accent-green);font-size:10px;margin-left:8px">${this.escapeHtml(result.tone||'N/A')} tone</span></div><div class="tool-result-text" style="white-space:pre-wrap">${this.escapeHtml(result.rewritten_text||'')}</div><button class="btn btn-secondary btn-sm" style="margin-top:12px" onclick="App.copyText(document.querySelector('.tool-result-text').textContent)">Copy</button></div>
+                ${changes ? `<div class="tool-result-section"><div class="tool-result-label">Changes Made</div><ul class="tool-result-list">${changes}</ul></div>` : ''}`;
+        } else {
+            answer = `<pre class="output-json">${this.syntaxHighlight(JSON.stringify(result, null, 2))}</pre>`;
         }
-
-        // Fallback: raw JSON
-        return `${time}<div class="output-json">${this.syntaxHighlight(JSON.stringify(result, null, 2))}</div>`;
+        return { answer, metadata };
     },
 };
 
 
 // Boot the app
 App.init();
+

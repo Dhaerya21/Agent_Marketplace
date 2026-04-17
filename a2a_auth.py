@@ -21,8 +21,12 @@ Usage in agent files:
 
 import os
 import json
+import hmac
+import logging
 import functools
 from flask import request, jsonify
+
+logger = logging.getLogger("a2a_auth")
 
 # ==============================================================================
 # CONFIG
@@ -63,14 +67,21 @@ def is_valid_key(api_key, agent_id=None):
         (is_valid, user_info_or_none)
     """
     # Master key bypasses all checks (used by marketplace proxy)
-    if api_key == MARKETPLACE_MASTER_KEY:
+    # Use timing-safe comparison to prevent timing attacks
+    if hmac.compare_digest(api_key, MARKETPLACE_MASTER_KEY):
         return True, {"user": "marketplace_proxy", "role": "internal"}
 
     keys = _load_keys()
 
     # Keys file structure: { "ak_xxx": {"user_id": 1, "agent_id": "researcher", ...} }
-    key_data = keys.get(api_key)
+    # Use timing-safe lookup to prevent key enumeration
+    key_data = None
+    for stored_key, data in keys.items():
+        if hmac.compare_digest(api_key, stored_key):
+            key_data = data
+            break
     if not key_data:
+        logger.warning(f"Invalid API key attempt from {request.remote_addr if request else 'unknown'}")
         return False, None
 
     # If agent_id specified, ensure the key is valid for this specific agent
