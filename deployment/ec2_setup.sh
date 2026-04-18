@@ -84,7 +84,7 @@ echo "[✓] Ollama model ready."
 USER_HOME=$(eval echo ~$USER)
 cd $USER_HOME
 if [ ! -d "app" ]; then
-    git clone https://github.com/YOUR_REPO/Agent_Marketplace.git app
+    git clone https://github.com/Dhaerya21/Agent_Marketplace.git app
 fi
 cd app
 
