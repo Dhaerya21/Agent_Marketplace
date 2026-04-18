@@ -246,6 +246,42 @@ def seed_agents():
             a2a_url="http://localhost:5003",
             skill_id="verify_and_cite",
         ),
+        Agent(
+            id="codereview",
+            name="Code Review & Audit Agent",
+            tagline="Find bugs and vulnerabilities in your code instantly",
+            description=(
+                "An expert architectural auditor that evaluates provided source code. "
+                "It spots logic errors, uncovers deep security vulnerabilities, and "
+                "suggests syntactical optimizations, returning the structural analysis as JSON. "
+                "Indispensable for secure deployments."
+            ),
+            price=22,
+            icon="A",
+            category="Security",
+            tags=json.dumps(["audit", "code-review", "security", "bugs", "optimization"]),
+            color="#ef4444",
+            a2a_url="http://localhost:5004",
+            skill_id="review_code",
+        ),
+        Agent(
+            id="dataextractor",
+            name="Data Extraction Agent",
+            tagline="Turn messy text into structured data mappings",
+            description=(
+                "An automated parser that rips through completely unstructured text "
+                "(like logs, raw emails, scraping data) and extracts specific structured "
+                "entities such as People, Orgs, Dates, and Contact Info into strict JSON lists. "
+                "Perfect for data-entry automation pipelines."
+            ),
+            price=18,
+            icon="E",
+            category="Data",
+            tags=json.dumps(["extraction", "data", "parser", "entity", "json"]),
+            color="#f59e0b",
+            a2a_url="http://localhost:5005",
+            skill_id="extract_data",
+        ),
     ]
 
     for agent_data in agents:

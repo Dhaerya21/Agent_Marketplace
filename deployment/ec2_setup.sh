@@ -140,7 +140,7 @@ RestartSec=5
 WantedBy=multi-user.target
 EOF
 
-for agent in researcher documentation citation; do
+for agent in researcher documentation citation codereview dataextractor; do
     port=$((5000 + \$(echo "\$agent" | md5sum | tr -d '[a-f]' | cut -c1-4) % 10 + 1))
     sudo tee /etc/systemd/system/agent-\${agent}.service > /dev/null <<EOF
 [Unit]
@@ -161,8 +161,8 @@ EOF
 done
 
 sudo systemctl daemon-reload
-sudo systemctl enable marketplace agent-researcher agent-documentation agent-citation
-sudo systemctl start marketplace agent-researcher agent-documentation agent-citation
+sudo systemctl enable marketplace agent-researcher agent-documentation agent-citation agent-codereview agent-dataextractor
+sudo systemctl start marketplace agent-researcher agent-documentation agent-citation agent-codereview agent-dataextractor
 echo "[✓] App Services Started."
 
 # 10. Logrotate Setup
@@ -178,7 +178,7 @@ $USER_HOME/app/logs/*.log {
     create 0640 $USER $USER
     sharedscripts
     postrotate
-        systemctl reload marketplace agent-researcher agent-documentation agent-citation > /dev/null 2>/dev/null || true
+        systemctl reload marketplace agent-researcher agent-documentation agent-citation agent-codereview agent-dataextractor > /dev/null 2>/dev/null || true
     endscript
 }
 EOF

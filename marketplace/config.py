@@ -38,6 +38,8 @@ class Config:
         "researcher":     os.environ.get("RESEARCHER_URL",     "http://localhost:5001"),
         "documentation":  os.environ.get("DOCUMENTATION_URL",  "http://localhost:5002"),
         "citation":       os.environ.get("CITATION_URL",       "http://localhost:5003"),
+        "codereview":     os.environ.get("CODEREVIEW_URL",     "http://localhost:5004"),
+        "dataextractor":  os.environ.get("DATAEXTRACTOR_URL",  "http://localhost:5005"),
     }
 
     # ── Marketplace Proxy ──────────────────────────────────────────────────
