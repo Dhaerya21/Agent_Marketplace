@@ -103,24 +103,10 @@ JWT_SECRET=$JWT_SEC
 MARKETPLACE_MASTER_KEY=$MK_KEY
 DATABASE_URL=postgresql://marketplace_user:$DB_PASS@localhost/marketplacedb
 REDIS_URL=redis://:$REDIS_PASS@localhost:6379/0
-
-# Optional DuckDNS Support
-DUCKDNS_DOMAIN=
-DUCKDNS_TOKEN=
 EOF
 chmod 600 $USER_HOME/app/.env
 
-# 8. DuckDNS Cron Job (Dynamic IP Updater)
-cat <<EOF > /tmp/duckdns.sh
-#!/bin/bash
-source '$USER_HOME/app/.env'
-if [ -n "\$DUCKDNS_DOMAIN" ] && [ -n "\$DUCKDNS_TOKEN" ]; then
-    echo url="https://www.duckdns.org/update?domains=\${DUCKDNS_DOMAIN}&token=\${DUCKDNS_TOKEN}&ip=" | curl -k -o /tmp/duckdns.log -K -
-fi
-EOF
-chmod 700 /tmp/duckdns.sh
-(crontab -l 2>/dev/null; echo "*/5 * * * * /tmp/duckdns.sh") | crontab -
-echo "[✓] App cloned, Python requirements installed, and DuckDNS cron scheduled."
+echo "[✓] App cloned and Python requirements installed."
 
 # 9. Systemd Services
 sudo tee /etc/systemd/system/marketplace.service > /dev/null <<EOF
@@ -247,6 +233,4 @@ echo "================================================="
 echo "  ✓ Hardened Infrastructure Deployment Finished!"
 echo "  → Auto-generated database passwords and secure keys"
 echo "    have been written to $USER_HOME/app/.env."
-echo "  → Set DUCKDNS_DOMAIN and DUCKDNS_TOKEN in $USER_HOME/app/.env"
-echo "    to optionally enable auto-updating domains."
 echo "================================================="
